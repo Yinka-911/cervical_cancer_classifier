@@ -8,3 +8,6 @@ json5==0.9.25
 typing-extensions==4.12.2
 typing-inspection==0.4.1
 typing_extensions==4.12.2
+imbalanced-learn==0.13.0
+imblearn==0.0
+scikit-learn==1.6.1
