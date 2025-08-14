@@ -5,16 +5,16 @@ import numpy as np
 import json
 from typing import Literal
 
-app = FastAPI(title="Cervical Cancer Prediction API",
-              description="API for predicting cervical cancer risk based on patient attributes")
+app = FastAPI(
+    title="Cervical Cancer Prediction API",
+    description="API for predicting cervical cancer risk based on patient attributes",
+    version="1.0.0"
+)
 
 # Load model and feature names
 model = joblib.load('cervical_cancer_model.pkl')
 with open("feature_columns.json", "r", encoding='utf-8') as f:
     feature_names = json.load(f)
-
-
-
 
 class PatientInput(BaseModel):
     Age: float
@@ -53,6 +53,22 @@ class PredictionOutput(BaseModel):
     risk_level: Literal["Low", "High"]
     probability_percent: float
     interpretation: str
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return {
+        "message": "Cervical Cancer Prediction API",
+        "status": "running",
+        "endpoints": {
+            "docs": "/docs",
+            "redoc": "/redoc",
+            "predict": {
+                "path": "/predict",
+                "method": "POST",
+                "description": "Submit patient data for cancer risk prediction"
+            }
+        }
+    }
 
 @app.post("/predict", response_model=PredictionOutput)
 async def predict(patient: PatientInput):
