@@ -11,7 +11,7 @@ st.set_page_config(
 st.title("🩺 Cervical Cancer Risk Assessment")
 
 # Constants
-API_URL = "http://127.0.0.1:8000/predict"
+API_URL = "https://cervical-cancer-classifier-8q4n.onrender.com/predict"
 RISK_CATEGORIES = {
     "Very low": (0, 20),
     "Low": (20, 40),
@@ -294,3 +294,4 @@ The output of this tool constitutes a risk prediction, not a diagnosis. Clinical
 
 *Version 1.0*
 """)
+
