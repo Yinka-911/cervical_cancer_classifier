@@ -8,10 +8,10 @@ st.set_page_config(
     layout="wide",
     page_icon="🩺"
 )
-st.title("🩺 Cervical Cancer Risk Prediction")
+st.title("🩺 Cervical Cancer Risk Assessment")
 
 # Constants
-API_URL = "https://cervical-cancer-classifier-8q4n.onrender.com/predict"
+API_URL = "http://127.0.0.1:8000/predict"
 RISK_CATEGORIES = {
     "Very low": (0, 20),
     "Low": (20, 40),
@@ -19,6 +19,23 @@ RISK_CATEGORIES = {
     "High": (60, 80),
     "Very high": (80, 100)
 }
+
+def get_personalized_tips(risk_level):
+    """Return personalized health tips based on risk level"""
+    if risk_level == "High":
+        return [
+            "Consider more frequent cervical cancer screenings",
+            "Communicate openly with your healthcare team about concerns and questions",
+            "Connect with patient support groups for emotional support",
+            "Review your sexual health practices with a healthcare provider"
+        ]
+    else:
+        return [
+            "Continue with regular Pap smears as recommended",
+            "Practice safe sex to reduce STD risks",
+            "Maintain a healthy diet and exercise routine",
+            "Consider HPV vaccination if you're eligible"
+        ]
 
 def get_risk_category(probability):
     """Categorize risk based on probability percentage"""
@@ -30,12 +47,12 @@ def get_risk_category(probability):
 def display_recommendations(risk_level):
     """Display recommendations based on risk level"""
     if risk_level in ["High", "Very high"]:
-        st.error("🚨 High Risk of Cervical Cancer")
+        st.error("⚠️ High Risk of Cervical Cancer")
         st.markdown("""
         **Recommendations:**
-        - Immediate consultation with gynecologist recommended
-        - Schedule follow-up diagnostic tests
-        - Review risk factors and prevention strategies
+        - Schedule an urgent consultation with a gynecologist or oncologist
+        - Complete all recommended diagnostic tests
+        - Discuss HPV vaccination if not previously vaccinated
         """)
     else:
         st.success("✅ Low Risk of Cervical Cancer")
@@ -156,7 +173,7 @@ with st.form("patient_form"):
                           format_func=lambda x: "Negative" if x == 0 else "Positive",
                           horizontal=True)
     
-    submitted = st.form_submit_button("Predict Risk")
+    submitted = st.form_submit_button("Assess Risk")
 
 # Handle form submission
 if submitted:
@@ -203,29 +220,45 @@ if submitted:
             )
             response.raise_for_status()
             result = response.json()
+            
+        # Get risk category (Low or High)
+        probability = result.get('probability_percent', 0)
+        risk_level = get_risk_category(probability)
         
         # Display results
         st.subheader("Risk Assessment Results")
         
-        # Create columns for metrics
-        col1, col2 = st.columns(2)
+        # Get risk category
+        risk_category = get_risk_category(result.get('probability_percent', 0))
         
-        with col1:
-            st.metric("Probability", f"{result.get('probability_percent', 0):.1f}%")
-        
-        with col2:
-            risk_category = get_risk_category(result.get('probability_percent', 0))
-            st.metric("Risk Category", risk_category)
-        
-        # Visual indicator
-        st.progress(result.get('probability_percent', 0) / 100)
+        # Display risk category prominently
+        if risk_category in ["High", "Very high"]:
+            st.error(f"Risk Category: {risk_category}")
+        elif risk_category in ["Moderate"]:
+            st.warning(f"Risk Category: {risk_category}")
+        else:
+            st.success(f"Risk Category: {risk_category}")
         
         # Display recommendations
         display_recommendations(risk_category)
         
-        # Show detailed interpretation if available
-        if 'interpretation' in result:
-            st.info(f"**Interpretation:** {result['interpretation']}")
+        # Extra features section
+        st.subheader("Personalized Health Insights")
+        
+        # Personalized Tips
+        with st.expander("📌 Personalized Health Tips"):
+            tips = get_personalized_tips(risk_level)
+            for tip in tips:
+                st.markdown(f"- {tip}")
+        
+        # Educational Resources
+        with st.expander("📚 Learn More About Cervical Cancer"):
+            st.markdown("""
+            **Educational Resources:**
+            - [CDC Cervical Cancer Information](https://www.cdc.gov/cancer/cervical/)
+            - [WHO Cervical Cancer Prevention](https://www.who.int/health-topics/cervical-cancer)
+            - [American Cancer Society Guide](https://www.cancer.org/cancer/cervical-cancer.html)
+            """)
             
     except RequestException as e:
         st.error("🔴 Connection Error: Could not reach the prediction service")
@@ -236,10 +269,28 @@ if submitted:
     except Exception as e:
         st.error(f"An unexpected error occurred: {str(e)}")
 
+# About section in sidebar
+with st.sidebar:
+    st.markdown("""
+    ## About This Tool
+    
+    This web application uses a **machine learning model trained on data from 858 patients** to assess cervical cancer risk.
+    
+    **Key Features:**
+    - Simple risk assessment (Low/High)
+    - Personalized health recommendations
+    - Educational resources
+    
+    *This tool is part of a comprehensive clinical evaluation and should not be used as the sole basis for medical decisions.*
+    """)
+
+
 # Footer
 st.markdown("---")
 st.caption("""
-**Note:** This tool is for professional use only. Always verify results with clinical assessment.
-The predictions are based on statistical models and should not replace medical judgment.
+**Medical Disclaimer:** For professional use only. This tool is not intended for self-diagnosis or treatment.
+This is a clinical decision support tool which is intended for use by qualified healthcare providers.  
+The output of this tool constitutes a risk prediction, not a diagnosis. Clinical correlation is required.  
 
+*Version 1.0*
 """)
