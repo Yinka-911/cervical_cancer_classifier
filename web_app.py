@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 from requests.exceptions import RequestException
+import time
 
 # Configure page
 st.set_page_config(
@@ -20,9 +21,32 @@ RISK_CATEGORIES = {
     "Very high": (80, 100)
 }
 
+# Add usage instructions to sidebar
+with st.sidebar:
+    st.markdown("""
+    ## About This Tool
+    
+    This web application uses a **machine learning model trained on data from 858 patients** to assess cervical cancer risk.
+    
+    **Key Features:**
+    - Simple risk assessment (Low/High)
+    - Personalized health recommendations
+    - Educational resources
+    
+    ## How to Use This Tool
+    
+    1. **Fill in the form** with the patient's information
+    2. **Click "Assess Risk"** to submit the data
+    3. **Wait for results** - if the server is starting up, this may take 30-60 seconds
+    4. **Review the risk assessment** and recommendations
+    5. **Check the personalized tips** for health guidance
+    
+    *Note: This tool is part of a comprehensive clinical evaluation and should not be used as the sole basis for medical decisions.*
+    """)
+
 def get_personalized_tips(risk_level):
     """Return personalized health tips based on risk level"""
-    if risk_level == "High":
+    if risk_level in ["High", "Very high"]:
         return [
             "Consider more frequent cervical cancer screenings",
             "Communicate openly with your healthcare team about concerns and questions",
@@ -210,88 +234,124 @@ if submitted:
         "Citology": float(Citology)
     }
     
+    # Create placeholder containers for dynamic content
+    loading_container = st.empty()
+    result_container = st.container()
+    
     try:
-        with st.spinner("Calculating risk..."):
-            response = requests.post(
-                API_URL,
-                json=patient_data,
-                headers={"Content-Type": "application/json"},
-                timeout=10
-            )
-            response.raise_for_status()
-            result = response.json()
+        with loading_container:
+            with st.spinner("Calculating risk..."):
+                # First try with a short timeout to check if server is responsive
+                try:
+                    response = requests.post(
+                        API_URL,
+                        json=patient_data,
+                        headers={"Content-Type": "application/json"},
+                        timeout=5
+                    )
+                    response.raise_for_status()
+                    
+                except requests.exceptions.ReadTimeout:
+                    # If we get a timeout, it might be the server waking up
+                    st.info("⏳ The server is starting up. This may take 30-60 seconds...")
+                    
+                    # Try again with a longer timeout
+                    status_text = st.empty()
+                    
+                    for i in range(10):
+                        try:
+                            status_text.text(f"Waiting for server... ({i+1}/10)")
+                            
+                            response = requests.post(
+                                API_URL,
+                                json=patient_data,
+                                headers={"Content-Type": "application/json"},
+                                timeout=10
+                            )
+                            response.raise_for_status()
+                            break
+                        except requests.exceptions.ReadTimeout:
+                            time.sleep(3)  # Wait 3 seconds before trying again
+                            continue
+                    else:
+                        # If we've exhausted all retries
+                        st.error("🔴 Connection Error: Could not reach the prediction service")
+                        st.info("The server is taking too long to respond. Please try again in a moment.")
+                        st.stop()
+                    
+                    status_text.empty()
+                
+                # Process the successful response
+                result = response.json()
+        
+        # Clear the loading container and display results in the result container
+        loading_container.empty()
+        
+        with result_container:
+            # Get risk category (Low or High)
+            probability = result.get('probability_percent', 0)
+            risk_level = get_risk_category(probability)
             
-        # Get risk category (Low or High)
-        probability = result.get('probability_percent', 0)
-        risk_level = get_risk_category(probability)
-        
-        # Display results
-        st.subheader("Risk Assessment Results")
-        
-        # Get risk category
-        risk_category = get_risk_category(result.get('probability_percent', 0))
-        
-        # Display risk category prominently
-        if risk_category in ["High", "Very high"]:
-            st.error(f"Risk Category: {risk_category}")
-        elif risk_category in ["Moderate"]:
-            st.warning(f"Risk Category: {risk_category}")
-        else:
-            st.success(f"Risk Category: {risk_category}")
-        
-        # Display recommendations
-        display_recommendations(risk_category)
-        
-        # Extra features section
-        st.subheader("Personalized Health Insights")
-        
-        # Personalized Tips
-        with st.expander("📌 Personalized Health Tips"):
-            tips = get_personalized_tips(risk_level)
-            for tip in tips:
-                st.markdown(f"- {tip}")
-        
-        # Educational Resources
-        with st.expander("📚 Learn More About Cervical Cancer"):
-            st.markdown("""
-            **Educational Resources:**
-            - [CDC Cervical Cancer Information](https://www.cdc.gov/cancer/cervical/)
-            - [WHO Cervical Cancer Prevention](https://www.who.int/health-topics/cervical-cancer)
-            - [American Cancer Society Guide](https://www.cancer.org/cancer/cervical-cancer.html)
-            """)
+            # Display results
+            st.subheader("Risk Assessment Results")
             
+            # Get risk category
+            risk_category = get_risk_category(result.get('probability_percent', 0))
+            
+            # Display risk category prominently
+            if risk_category in ["High", "Very high"]:
+                st.error(f"Risk Category: {risk_category}")
+            elif risk_category in ["Moderate"]:
+                st.warning(f"Risk Category: {risk_category}")
+            else:
+                st.success(f"Risk Category: {risk_category}")
+            
+            # Display recommendations
+            display_recommendations(risk_category)
+            
+            # Extra features section
+            st.subheader("Personalized Health Insights")
+            
+            # Personalized Tips
+            with st.expander("📌 Personalized Health Tips"):
+                tips = get_personalized_tips(risk_level)
+                for tip in tips:
+                    st.markdown(f"- {tip}")
+            
+            # Educational Resources
+            with st.expander("📚 Learn More About Cervical Cancer"):
+                st.markdown("""
+                **Educational Resources:**
+                - [CDC Cervical Cancer Information](https://www.cdc.gov/cancer/cervical/)
+                - [WHO Cervical Cancer Prevention](https://www.who.int/health-topics/cervical-cancer)
+                - [American Cancer Society Guide](https://www.cancer.org/cancer/cervical-cancer.html)
+                """)
+                
+    except requests.exceptions.ConnectionError as e:
+        loading_container.empty()
+        with result_container:
+            st.error("🔴 Connection Error: Could not reach the prediction service")
+            st.info("Please ensure:")
+            st.info("1. The prediction API server is running")
+            st.info("2. You're using the correct API URL")
+            st.info(f"Technical details: {str(e)}")
     except RequestException as e:
-        st.error("🔴 Connection Error: Could not reach the prediction service")
-        st.info("Please ensure:")
-        st.info("1. The prediction API server is running")
-        st.info("2. You're using the correct API URL")
-        st.info(f"Technical details: {str(e)}")
+        loading_container.empty()
+        with result_container:
+            st.error(f"Network error occurred: {str(e)}")
     except Exception as e:
-        st.error(f"An unexpected error occurred: {str(e)}")
-
-# About section in sidebar
-with st.sidebar:
-    st.markdown("""
-    ## About This Tool
-    
-    This web application uses a **machine learning model trained on data from 858 patients** to assess cervical cancer risk.
-    
-    **Key Features:**
-    - Simple risk assessment (Low/High)
-    - Personalized health recommendations
-    - Educational resources
-    
-    *This tool is part of a comprehensive clinical evaluation and should not be used as the sole basis for medical decisions.*
-    """)
-
+        loading_container.empty()
+        with result_container:
+            st.error(f"An unexpected error occurred: {str(e)}")
 
 # Footer
 st.markdown("---")
 st.caption("""
 **Medical Disclaimer:** For professional use only. This tool is not intended for self-diagnosis or treatment.
 This is a clinical decision support tool which is intended for use by qualified healthcare providers.  
-The output of this tool constitutes a risk prediction, not a diagnosis. Clinical correlation is required.  
+The output of this tool constitutes a risk prediction, not a diagnosis. Clinical correlation is required. 
 
-*Version 1.0*
+
+ 
+*Version 1.1*
 """)
-
